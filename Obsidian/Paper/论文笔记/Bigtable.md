@@ -65,7 +65,7 @@ Bigtable 的整体架构与原论文基本一致，保持了可扩展的设计�
 
 - **数据模型**: 三维有序映射 `(row_key, column_key, timestamp) → value:bytes`
 - **行组织**: 按 row key 字典序排列，划分为 [[Tablet]]（tablet）作为托管/加载/移动/负载均衡的基本单位
-- **列组织**: column key 结构为 `column_family:column_name`，column family 进一步分组为 [[Locality Group|locality group]]，每个 locality group 在压缩时生成独立的 [[SSTable]]
+- **列组织**: column key 的结构为 `column_family:column_name`，column family 进一步分组为 [[Locality Group|locality group]]，每个 locality group 在压缩时生成独立的 [[SSTable]]
 - **存储引擎**: 结合 [[WAL]]（commit log）和 [[LSM-tree]]，所有变更先写 WAL 再确认
 - **集群结构**: Master + 大量 [[Tablet Server|tablet server]]，tablet server 分组为 partition，进一步分为 subpartition
 - **底层存储**: 数据存储在分布式文件系统 [[Colossus]] 上，tablet 移动不需要数据迁移
