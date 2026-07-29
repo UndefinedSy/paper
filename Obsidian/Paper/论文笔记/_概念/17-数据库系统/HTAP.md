@@ -20,8 +20,12 @@ Hybrid Transactional/Analytical Processing，在同一数据库系统中同时�
 ## 代表工作
 
 - [[Bigtable]]: 请求优先级支持 HTAP 工作负载
+- [[ByteGraph-Dione]]: 在同一生产级图上通过轻量事务、自适应行列格式和热点副本支持动态 OLTP/OLAP 混合负载
 
 ## 相关概念
 
 - [[Bigtable]]
 - [[Eventual Consistency]]
+- [[MVCC]]
+- [[Snapshot Isolation]]
+- [[Adaptive Dual-Format Graph Storage]]
