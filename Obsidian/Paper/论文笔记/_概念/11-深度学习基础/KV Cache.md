@@ -15,6 +15,7 @@ Transformer 推理中缓存各层历史 token 的 Key、Value 矩阵，以避免
 2. 在大模型 / 大推荐模型中，单条 cache 可达 MB 级，模型版本并行会形成超大数据集。
 3. 在线 serving 需要低尾延迟随机读，训练过程则持续产生高带宽写入。
 4. 大 value 对块对齐、写放大和 HDD 随机 I/O 极为敏感。
+5. 在在线 [[Large Language Model Serving|LLM 服务]]中，KV cache 随 decode 动态增长，GPU 端的碎片、预留和重复副本会直接限制 batch size；[[PagedAttention]] 以定长块实现按需分配与共享。
 
 ## 代表工作
 
