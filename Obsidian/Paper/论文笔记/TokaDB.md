@@ -111,6 +111,7 @@ Index SSTable compaction 会让同一用户的 segment 分散到多个 ValueLog�
 - GC 期间根据当前分布与目标比例迁移 segment，使每个用户的冷数据比例逼近配置值。
 - 实验显示 $F_{HDD} \le 0.7$ 时读取性能基本稳定；更激进的 HDD 比例开始损伤性能。
 
+
 #### 模块 4：[[Adaptive Backup Reads]]
 
 首次副本在 $T_{backup}$ 内未完成时，并行读取跨机架的另一副本；接受第一个成功响应并立即取消其余请求。静态 deadline 会在拥塞时触发“更多备份读 → 更拥塞”的正反馈，因此 TokaDB 每 100 ms 根据设备 queue depth、吞吐、利用率和延迟计算归一化压力 $S_t \in [0,1]$，闭环调整 deadline：
@@ -118,6 +119,8 @@ Index SSTable compaction 会让同一用户的 segment 分散到多个 ValueLog�
 - $S_t>S_0$：增大 deadline，抑制新 backup read；
 - $S_t<S_0$：减小 deadline，更积极地隐藏慢副本；
 - 典型参数：$\eta=20$ ms、$S_0=0.7$，CPU 开销低于 1%。
+
+> 公式？
 
 #### 模块 5：[[Hardware-Aware Block Alignment]]
 
@@ -128,6 +131,10 @@ TokaDB 将一个 KV Cache entry 完整映射到一个物理块：块内依次存
 #### 模块 6：[[Log as Data]]
 
 传统 [[WAL]] + SSTable 会把同一 value 持久化两次。TokaDB 直接将 log 作为主数据：修改 [[LSM-tree]]，SSTable entry 只保存指向 log data block 的轻量指针，读取时先查指针再直读 log。底层存储仍复制 log，因此 durability、crash consistency 和容错语义不变，但消除了第二次数据写入。
+
+> syao:
+> 听起来类似于 BlobLog 和 WAL 合并了？WAL 里面存的是什么？crash recovery 时如何重建 memtable？WAL 如何 GC？
+
 
 #### 模块 7：[[Preemptive Thread Scheduler]]
 
