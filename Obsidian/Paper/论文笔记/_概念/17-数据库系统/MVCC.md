@@ -20,9 +20,11 @@ Multi-Version Concurrency Control，通过为同一逻辑记录保留多个提�
 
 - [[ByteGraph-Dione]]：将长短事务的版本生命周期分开管理。
 - [[Bigtable]]：以时间戳版本支持多版本数据访问。
+- [[AzureMVCCVersionCleaner]]：以可扩展、抗冲突、细粒度水位的后台清理器解决 MVCC 旧版本回收在生产超大规模数据库中的瓶颈。
 
 ## 相关概念
 
 - [[Snapshot Isolation]]
 - [[Lightweight Transactions for Hybrid Workloads]]
 - [[HTAP]]
+- [[Persistent Version Store]]

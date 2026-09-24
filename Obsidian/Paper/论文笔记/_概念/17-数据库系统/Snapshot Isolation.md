@@ -19,9 +19,11 @@ aliases: [SI, 快照隔离]
 ## 代表工作
 
 - [[ByteGraph-Dione]]：以事务聚合降低图 HTAP 中 SI 的版本和吞吐开销。
+- [[AzureMVCCVersionCleaner]]：SQL Azure 中 SI 与 RCSI 都依赖 [[Persistent Version Store]] 保留旧版本，是版本清理器需要精确判定可见性水位的直接原因。
 
 ## 相关概念
 
 - [[MVCC]]
 - [[Lightweight Transactions for Hybrid Workloads]]
 - [[HTAP]]
+- [[MinUsefulXTS]]
