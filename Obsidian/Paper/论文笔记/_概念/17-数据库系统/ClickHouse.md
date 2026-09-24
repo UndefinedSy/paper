@@ -18,6 +18,7 @@ aliases: [ClickHouse 数据库]
 ## 代表工作
 
 - [[ByteHouse]]：在实时多模态云原生数仓中实现或评估该概念。
+- [[TDSQL]]：作为 push 执行模型与执行期 Runtime Filter 绕过机制的对比对象。
 
 ## 相关概念
 

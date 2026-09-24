@@ -18,6 +18,7 @@ aliases: [TPC Decision Support Benchmark]
 ## 代表工作
 
 - [[ByteHouse]]：在实时多模态云原生数仓中实现或评估该概念。
+- [[TDSQL]]：以 10,000 GB (SF=10000) 配置在官方 TPC-DS 报告中取得全球第一。
 
 ## 相关概念
 

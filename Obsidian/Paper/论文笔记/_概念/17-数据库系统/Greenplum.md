@@ -12,6 +12,7 @@ aliases: [Greenplum Database]
 4. [[Aurora Limitless Database]] 用时间戳并发控制 + 2PC 彻底去掉了中心协调者，正是针对这两点。
 ## 代表工作
 - Greenplum: A hybrid database for transactional and analytical workloads (SIGMOD 2021)。
+- [[TDSQL]]：作为传统 MPP 架构的主要对比基线，在扩展性与延迟上被 TDSQL 全面超越。
 ## 相关概念
 - [[Snapshot Isolation]]
 - [[HTAP]]

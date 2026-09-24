@@ -28,6 +28,7 @@ aliases: [Bloom过滤器, 布隆过滤器]
 
 - [[Bigtable]]: 读路径优化，减少不必要的磁盘访问
 - [[Cassandra]]: SSTable 查找优化
+- [[TDSQL]]: 作为三类 [[Runtime Filter]]（Bloom Filter、Range Filter、In Filter）之一，用于 Join 场景的下推剪枝
 
 ## 相关概念
 

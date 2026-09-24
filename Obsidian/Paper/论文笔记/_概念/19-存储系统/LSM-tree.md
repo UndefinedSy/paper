@@ -22,6 +22,7 @@ aliases: [LSM Tree, Log-Structured Merge-tree, LSM tree, LSM-Tree]
 - [[Bigtable]]: 使用 LSM-tree + WAL 作为核心存储引擎
 - [[Cassandra]]: 使用 LSM-tree 结构存储数据
 - [[HBase]]: 基于 Bigtable 的 LSM-tree 实现
+- [[TDSQL]]: [[Estore]] 列存引擎借鉴 LSM 式思想，用行存 Stash 缓冲写入、列存 Silos 承载分析扫描
 
 ## 相关概念
 

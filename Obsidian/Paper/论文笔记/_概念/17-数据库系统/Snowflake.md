@@ -11,6 +11,7 @@ aliases: [Snowflake Elastic Data Warehouse]
 3. 定位差异：Snowflake 面向 OLAP 与大规模扫描，Limitless 面向高并发短事务。
 ## 代表工作
 - The Snowflake elastic data warehouse (SIGMOD 2016)。
+- [[TDSQL]]：作为 10TB TPC-DS 场景下的实用云仓库对比基线（6X-Large 配置）。
 ## 相关概念
 - [[Disaggregated Storage-Compute Architecture]]
 - [[Shared-Storage Architecture]]

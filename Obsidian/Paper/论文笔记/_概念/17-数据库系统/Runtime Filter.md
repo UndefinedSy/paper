@@ -18,8 +18,11 @@ aliases: [运行时过滤器]
 ## 代表工作
 
 - [[ByteHouse]]：在实时多模态云原生数仓中实现或评估该概念。
+- [[TDSQL]]：提出 [[Adaptive Runtime Filter]] 分层自适应机制，实现 Bloom/Range/In 三类 filter 并解决广播开销与低选择率性能倒退问题。
 
 ## 相关概念
 
 - [[Bloom Filter]]
 - [[Hybrid Search]]
+- [[Adaptive Runtime Filter]]
+- [[Forward Node]]
