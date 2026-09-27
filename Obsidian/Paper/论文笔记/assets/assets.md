@@ -12,6 +12,7 @@ generated_by: dailypaper-skills
 
 - [[论文笔记/assets/AzureMVCC/AzureMVCC|AzureMVCC]] · 0 篇笔记 · 0 个子目录
 - [[论文笔记/assets/Firestore/Firestore|Firestore]] · 0 篇笔记 · 0 个子目录
+- [[论文笔记/assets/K2Plus/K2Plus|K2Plus]] · 0 篇笔记 · 0 个子目录
 - [[论文笔记/assets/LindormTSDB/LindormTSDB|LindormTSDB]] · 0 篇笔记 · 0 个子目录
 - [[论文笔记/assets/LindormUWC/LindormUWC|LindormUWC]] · 0 篇笔记 · 0 个子目录
 - [[论文笔记/assets/TDSQL/TDSQL|TDSQL]] · 0 篇笔记 · 0 个子目录
