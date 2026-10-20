@@ -175,7 +175,7 @@ $$
 \text{BranchLSN} \in \text{PITR-Window}(\text{parent}), \qquad \text{diverge}(t) = \begin{cases} \text{shared}, & t \le \text{BranchLSN} \\ \text{independent}, & t > \text{BranchLSN} \end{cases}
 $$
 
-**含义**: 分支时 [[LSN|branch LSN]] 必须保证"在分支创建的那一刻，父分支上该 LSN 处的每一个页都可被重建"。为简化，实现把 branch LSN 限制在父分支的 PITR 窗口内。分支前共享历史与**同一份物理存储**，分支后各自独立追加 WAL。
+**含义**: 分支时 [[LSN|branch LSN]] 必须保证"在分支创建的那一刻，父分支上该 LSN 处的每一个页都可被重建"。为简化，实现把 branch LSN 限制在父分支的 PITR 窗口内。分支前共享历史与**同一份物理存储**，分支后各自独立追加 WAL。（？？？
 
 **符号说明**:
 - $\text{BranchLSN}$: 父子分支的分叉点（Figure 4 中编号 ⑪）。

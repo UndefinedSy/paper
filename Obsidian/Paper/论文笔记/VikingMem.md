@@ -68,7 +68,7 @@ LLM 应用正从无状态、短查询转向长时间、跨会话的有状态交�
 
 ### 核心数据抽象：Event-Entity 模型
 
-[[Memory Base]] 的架构核心建立在两个基础数据抽象之上：**Event（事件）**与**Entity（实体）**。
+[[Memory Base]] 的架构核心建立在两个基础数据抽象之上：**Event（事件**）与 **Entity(实体)** 。
 
 #### Event
 

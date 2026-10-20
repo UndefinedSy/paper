@@ -98,6 +98,7 @@ Figure 6 展示 KV manager 的内部结构，分为三个子模块：
 #### Metadata management
 
 元数据管理器维护所有 KV 条目的全局映射（key → 内存地址），用一个标志位区分条目在内存还是存储中（on-storage 条目地址置零）。维护两个 LRU 链表（in-memory / on-storage），支持快速命中更新。读请求先向 KV manager 发 RPC 查询地址，命中则客户端直接发起 one-sided RDMA read。后台线程周期性地向存储发出 offload 请求完成内存→存储迁移，并在存储用量超阈值时淘汰 on-storage 的 LRU 条目。为容错，元数据可异步持久化到云数据库，支持 KV manager 崩溃后快速重建元数据表（不需要重建底层 KV 数据本身）。
+（？为什么还需要 on-storage，对节点上的数据进行 GC？
 
 #### Write/Read workflow（Figure 7）
 
@@ -113,14 +114,16 @@ Figure 6 展示 KV manager 的内部结构，分为三个子模块：
 2. manager 查元数据表，若命中则临时加读锁，防止并发写或后台淘汰，返回节点 ID 与地址（否则返回非法地址，表示 cache miss）；
 3. 客户端执行 one-sided RDMA read 取数据；
 4. 客户端发 RPC 解锁。
+（？如果不在内存中呢
 
 #### 并发控制
 
-PolarKV 用**按 key 的锁**处理并发：写操作仅在 key 不存在时分配内存并加写锁，条目只有在客户端完成 one-sided RDMA write 并发 write-finish RPC 后才可读；读操作只在条目存在且未被写锁定时返回地址。这样读者只能观察到完全写完的条目或 cache miss，不会读到部分写入的数据。若多个客户端并发写同一个 key，只有第一个写者继续执行，后续写者收到"重复/进行中"状态并跳过写入——这是安全的，因为同一模型、同一前缀对应的 KV 条目是确定性的，从而避免重复分配与重复 RDMA 流量。
+PolarKV 用**按 key 的锁**处理并发：写操作仅在 key 不存在时分配内存并加写锁，条目只有在客户端完成 one-sided RDMA write 并发 write-finish RPC 后才可读；读操作只在条目存在且未被写锁定时返回地址。这样读者只能观察到完全写完的条目或 cache miss，不会读到部分写入的数据。若多个客户端并发写同一个 key，只有第一个写者继续执行，后续写者收到"重复/进行中"状态并跳过写入——这是安全的，因为**同一模型、同一前缀对应的 KV 条目是确定性**的，从而避免重复分配与重复 RDMA 流量。
 
 #### 可扩展性
 
 KV manager 只参与元数据操作（地址查找、内存分配、锁管理、元数据状态转移），**不在大数据传输路径上**：地址解析后，KV 张量直接在推理引擎与 slab node 之间通过 one-sided RDMA 传输。key-address 表基于哈希，LRU 链表可按 key range 分片以降低高并发下的争用；由于 KV 条目天然按前缀/哈希 key 标识，manager 本身也可按不相交的 key range 分片到多个 manager 实例，支撑更大规模部署。
+（看起来是：1. 不同 key range 可以 shard 给不同 manager，manager 管理一组机器，分给哪台机器由 manager 决定）
 
 ### 模块 3：Storage layer
 
@@ -129,18 +132,22 @@ PolarKV 的存储层不采用跨多存储节点的分布式文件系统构建全
 - **Disk server（DS）**：与所属 SN 同机部署，共享 SN 的内存空间，offload 时可直接访问 in-memory KV 数据，无需额外网络跳转或序列化开销。
 - **存储介质选择**：鉴于 KV cache 对带宽和容量都敏感，PolarKV 偏好低每 GB 成本、低每 GB/s 成本的存储档位，再通过聚合多设备带宽弥补单设备带宽不足——实现上用多块低成本、低带宽的阿里云 ESSD **PL0** 组成 [[RAID-0]] 阵列，挂载 ext4 原生文件系统，DS 通过标准文件接口访问 ESSD。
 - **文件命名**：DS 不维护额外元数据，直接用约 64 字节的 KV key 哈希值作为文件名；但这不是"一个 token 一个文件"——KV cache 以 chunk 粒度存储，每个 chunk 对应数十到数百 MB 的 KV 数据，单个条目的写入可天然跨越 RAID-0 中的多块 ESSD，充分利用底层聚合带宽，因此无需再进一步切分成更小文件。
+	- ？hash 碰撞了怎么办
+	- ？如何理解以 chunk 为粒度
 - **通信**：DS 与 KV manager 之间同样通过 RDMA-based RPC，DS 内置 RPC handler 处理 offload / load / deletion 请求。
 
 #### Workflow
 
-KV manager 周期性扫描 LRU 链表，为最近未使用的 KV 条目向对应 DS 发出 offload 请求（含 key、内存地址、大小）；DS 启动后台线程异步把指定内存区域写入存储，完成后通知 manager 更新元数据为"on-disk"。当读请求命中的条目位于存储而非内存时，manager 先在配对的 SN 上分配新内存区域，再向 DS 发 load 请求把数据读回内存并确认完成。manager 同时监控各节点存储用量，达到阈值即指示 DS 淘汰最久未用的 on-storage 条目。
+KV manager 周期性扫描 LRU 链表，为最近未使用的 KV 条目向对应 DS 发出 offload 请求（含 key、内存地址、大小）；DS 启动后台线程异步把指定内存区域写入存储，完成后通知 manager 更新元数据为"on-disk"。（回收内存
+当读请求命中的条目位于存储而非内存时，manager 先在配对的 SN 上分配新内存区域，再向 DS 发 load 请求把数据读回内存并确认完成。（读重加载
+manager 同时监控各节点存储用量，达到阈值即指示 DS 淘汰最久未用的 on-storage 条目。（总存储量控制
 
 ### 模块 4：High availability
 
 PolarKV 的设计哲学是：**KV cache 是性能优化而非正确性关键状态**——数据不可用时推理引擎总能重新计算对应的 attention states，因此 HA 以"保前进、容忍降级"为目标而非强一致复制：
 
 1. **客户端侧故障处理**：KV manager 或内存/存储节点暂时不可用时，客户端库透明地向推理引擎报告 cache miss（进行中的 RPC 中断同样视为 miss），推理引擎正常重计算；客户端持续重试连接，服务恢复后自动恢复使用。
-2. **元数据持久化与 manager 恢复**：KV manager 把全局元数据持久化到外部云数据库，崩溃重启后从持久化存储重建元数据表；由于底层 KV 数据本身保持完好，恢复不需要重建缓存状态。
+2. **元数据持久化与 manager 恢复**：KV manager 把全局**元数据持久化到外部云数据库**，崩溃重启后从持久化存储重建元数据表；由于**底层 KV 数据本身保持完好，恢复不需要重建**缓存状态。
 3. **内存节点故障**：独立处理单节点失效——manager 只失效该节点上的 KV 条目，其他节点上的条目继续可用；故障被限制在小范围数据子集，不产生级联影响。
 
 ---

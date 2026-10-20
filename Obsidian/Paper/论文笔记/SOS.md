@@ -68,7 +68,7 @@ SOS 是全局无序（globally unordered）的 KV 存储系统，不同业务数
 
 单次请求流程（Figure 3）：客户端本地缓存路由表，直连目标 DataServer；版本不匹配时触发表刷新。GET/TEST 直接查询 primary DataServer；PUT/DELETE 携带链元数据发往 primary，primary 本地持久化、打时间戳后转发给链上下一个 follower（细节见 §2.4 两阶段链提交）。节点内部：TEST 只读内存索引条目（存在性、时间戳、TTL），不触碰磁盘；GET 先探测读缓存，未命中则查索引得到磁盘位置，读取 KV 载荷与记录元数据后更新读缓存；PUT/DELETE 先探测索引——覆盖写/删除都要移除旧磁盘 block 及索引条目、失效读缓存条目，再插入新 block 并更新索引。
 
-由于 KB 级 SSD 读约 700μs，而数据中心内网络 RTT 约 1ms，这一"至多一次磁盘 I/O"架构使 SOS 在 SSD 成本下达到可比拟分布式内存存储的延迟。删除/覆盖的 block 在写时同步回收，无需 compaction 或垃圾回收，从而保证稳定的尾延迟。
+由于 KB 级 SSD 读约 700μs，而数据中心内网络 RTT 约 1ms，这一"至多一次磁盘 I/O"架构使 SOS 在 SSD 成本下达到可**比拟分布式内存存储**（比的是 SSD 读和网络读... 但 client 访问它也是一跳啊...）的延迟。删除/覆盖的 block 在写时同步回收，无需 compaction 或垃圾回收，从而保证稳定的尾延迟。
 
 ### 核心模块 1：Disk Storage（dstorage）
 
@@ -76,31 +76,36 @@ SOS 是全局无序（globally unordered）的 KV 存储系统，不同业务数
 
 **Block、Chunk 与 Step**：
 
-- 最小存储单元是 **block**，存一个 KV 条目及其元数据（service ID、timestamp、TTL）。dstorage 为每个条目选择能容纳它的最小 block 规格，小 KV 不继承大 size class 的空间开销。
+- 最小存储单元是 **block**，**存一个 KV 条目及其元数据（service ID、timestamp、TTL）**。dstorage 为每个条目选择能容纳它的最小 block 规格，小 KV 不继承大 size class 的空间开销。
 - **Step 序列**决定 block 规格集合（见公式 1），比传统 2 的幂次分配提供更细粒度，尤其有利于小对象（大多数分配发生在这里）。
 - 所有数据以 **chunk** 为单位管理（如 64MB），每个 chunk 带 header（block_size、occupancy bitmap）。磁盘初始切为若干 chunk；每个 chunk 只存一种 block 规格，但按需分配给某个 step 而非永久绑定。chunk 内全部 block 被删除后立即回收复用。对删除模式不规则导致 chunk 稀疏占用的场景，SOS 提供在线 compaction 工具供运维手动整理。
 
-**最小 block_size 约束**：受索引可寻址性限制——32-bit block offset、2TB 分区下，实际最小值为 512 字节。对 LLM KV-cache，attention tensor 大小由模型架构固定，相应设置 block_size 可将内部碎片降到近零。
+**最小 block_size 约束**：受索引可寻址性限制——32-bit block offset、2TB 分区下，实际最小值为 512 字节。对 LLM KV-cache，attention tensor 大小由模型架构固定，相应设置 block_size 可将内部碎片降到近零。（？
 
-**Write Cache**：SOS 支持 Direct IO 并实现自己的类 pagecache 写回管理机制。写请求由专用后端线程负责，当某 chunk 脏块占比超过阈值即触发 flush；生产环境启用异步 flush，client 可见延迟不等待设备持久化。写缓存管理以 chunk 粒度运作：某 step 同时最多一个活跃 chunk 在内存中；无活跃 chunk 时新分配，数据全删后回收。该机制的主要代价是分布式不一致风险——进程异常退出或机器宕机时节点可能有未 flush 数据，SOS 通过把该节点从路由表移除、等待从其他副本修复来解决，年度生产运行未观测到因写缓存不完整导致的数据丢失。
+**Write Cache**：SOS 支持 Direct IO 并实现自己的类 pagecache 写回管理机制。写请求由专用后端线程负责，当某 chunk 脏块占比超过阈值即触发 flush；生产环境启用**异步 flush**，client 可见延迟不等待设备持久化。写缓存管理以 chunk 粒度运作：**某 step 同时最多一个活跃 chunk 在内存中**；无活跃 chunk 时新分配，数据全删后回收。该机制的主要代价是分布式不一致风险——进程异常退出或机器宕机时节点可能有未 flush 数据，SOS 通过把该节点从路由表移除、等待从其他副本修复来解决，年度生产运行未观测到因写缓存不完整导致的数据丢失。
+> flush 机制？
+> 异步 flush 如何保证数据持久性
 
-**Multiple Disk Management（mdstorage）**：单 DataServer 管理多个物理磁盘（每盘一个独立 dstorage 实例），磁盘级隔离保证单盘 I/O 错误不影响其他盘；DataServer 将受影响 block 重映射到健康盘，仅在某盘错误率超阈值时才标记自身不健康，背景 flush 线程可独立运行于每块盘，提升总写吞吐。
+**Multiple Disk Management（mdstorage）**：单 DataServer 管理多个物理磁盘（**每盘一个独立 dstorage 实例**），磁盘级隔离保证单盘 I/O 错误不影响其他盘；DataServer 将受影响 block 重映射到健康盘，仅在某盘错误率超阈值时才标记自身不健康，背景 flush 线程可独立运行于每块盘，提升总写吞吐。
 
 ### 核心模块 2：In-Memory Hash-Based Index
 
 **哈希索引选择**：相比 [[LSM-tree]] 和 [[B+ Tree|B+ 树]]，SOS 采用哈希结构，提供 $O(1)$ 查找并消除索引更新的写放大，代价是失去排序（见 Table 2 对比）。这对点查为主、无 range-scan 需求的在线服务是可接受的权衡。
 
 **紧凑内存设计**：索引全量驻留内存以保证"至多一次磁盘 I/O"。每条索引条目仅 30 字节：
-- **Key 表示**：96 位 [[MD5]] 哈希（而非完整 key 字符串），空间高效且碰撞概率可忽略。
+- **Key 表示**：96 位 [[MD5]] **哈希（而非完整 key 字符串）**，空间高效且碰撞概率可忽略。
 - **Timestamp**：48 位毫秒精度 Unix 时间戳，用于版本控制、冲突解决和 CAS 事务。
 - **TTL 编码**：16 位变精度字段，支持最长 20 年、秒级粒度。
 - **Service ID**：16 位标识租户，用于 SCAN 时的高效过滤。
+> 有点类似于 bloomfilter 判断存在性？
+> 如果真的出现碰撞时 value 咋办？
 
-**碰撞概率分析**（公式 3）：基于 [[Birthday Paradox|生日悖论]]，对 $H=2^{42}$（超 4 万亿）索引条目在 $2^{96}$ 表示空间下，碰撞概率约 $2^{-13}\approx 0.0122\%$，可忽略；磁盘存储模块还会在最终读取时验证完整 key 作为安全兜底。
+**碰撞概率分析**（公式 3）：基于 [[Birthday Paradox|生日悖论]]，对 $H=2^{42}$（超 4 万亿）索引条目在 $2^{96}$ 表示空间下，碰撞概率约 $2^{-13}\approx 0.0122\%$，可忽略；**磁盘存储模块还会在最终读取时验证完整 key 作为安全兜底**。
 
 **索引布局**：用[[分离链表|separate chaining]]解决哈希碰撞。索引由 32-bit head index 的 bucket 数组 + 预分配的 30 字节条目池组成，用数组下标而非机器指针使结构位置无关，可驻留共享内存。典型节点（256GB RAM，六块 4TB SSD）在 71% 磁盘利用率下，约 138GB 索引 + 少量写缓存，剩余约 100GB 用于读缓存，体现内存/磁盘资源的均衡利用。
 
 **索引持久化**：通过 mmap 映射到磁盘并周期性 flush（OS page cache 或自定义实现）。即使索引 flush 领先于数据 flush，未落盘的数据块仍可从写缓存读取（写缓存总是先于磁盘被探测），因此读正确性不受磁盘持久化进度影响。
+> 怎么保证持久性？
 
 **TTL 支持**：后台例程周期清理过期数据；索引条目上的过期时间戳使 TEST/GET 可在不访问磁盘的前提下快速过滤过期数据。
 
@@ -115,7 +120,7 @@ SOS 在经典[[Chain Replication|链复制]]基础上做了三项关键修改：
 3. **读/删除语义**：读查询 head，只返回索引可见（即成功提交）的数据；删除遵循同样的两阶段协议。
 
 **关键优势**：
-- **可靠性**：把失败率高的操作（校验、磁盘写）解耦进 Phase 1，轻量操作（索引更新）放进 Phase 2，降低 Phase 2 失败概率；Phase 1 失败触发原地回滚，罕见的 Phase 2 失败通过持续重试直至下游恢复或被 ConfigServer 心跳超时永久剔除后在新链上继续提交。
+- **可靠性**：把失败率高的操作（校验、磁盘写）解耦进 Phase 1，轻量操作（索引更新）放进 Phase 2，降低 Phase 2 失败概率；Phase 1 失败触发原地回滚，**罕见的 Phase 2 失败通过持续重试直至下游恢复或被 ConfigServer 心跳超时永久剔除后在新链上继续提交**。
 - **线性一致性**（[[Linearizability]]）：通过三个机制保证——未提交版本对读严格不可见；[[Lock Striping|锁条带]]（lock striping）序列化 Phase 2 索引更新定义线性化点；路由表变更时 ConfigServer 向所有 DataServer 广播新版本，携带旧版本的在途请求被拒绝并提示表刷新，传播窗口被限制在一个 RTT 内（小于同一客户端因果相关操作间的最小间隔）。
 - **操作简洁性**：所有读经 primary，客户端无需追踪 tail 身份；节点对称角色简化了重试逻辑。
 
@@ -128,6 +133,7 @@ CAS 直接构建于两阶段提交协议之上。每个请求携带 `compare_tim
 - GET：仅当存储版本时间戳严格大于 `compare_timestamp` 时才返回数据。
 
 **分布式环境中的原子性保证**：网络重排序意味着到达某一副本的顺序不代表到达下一副本的顺序一致，SOS 通过两阶段提交保证原子性：Phase 1 沿链顺序比较 `compare_timestamp` 与本地索引时间戳，Phase 2 由于索引更新经锁条带序列化，并发的相同 `compare_timestamp` 事务只有一个能成功提交（见 Figure 5 的 Transaction A/B 示例）。失败时沿原链回滚，释放未提交资源。
+> TODO: 看看例子是什么样的设计
 
 **三种典型用例**：
 1. **原子读改写**：客户端把读到的时间戳作为 `compare_timestamp`，防止并发写导致的更新丢失。
@@ -138,7 +144,7 @@ CAS 直接构建于两阶段提交协议之上。每个请求携带 `compare_tim
 
 ### 核心模块 5：Routing and Replication
 
-数据分片与路由由 ConfigServer 管理，职责是维护路由表与通过心跳监控 DataServer 存活。与[[Consistent Hashing|一致性哈希]]（牺牲全局排序换负载均衡）不同，SOS 采用**固定 segment 分区**，实现确定性的 $O(1)$ 表查找：数据切分为 $S$ 个 segment（如 $S=16{,}384$），每个 segment $R$ 副本，共 $S \times R$ 个数据副本分布在 $N$ 个 DataServer 上。
+数据分片与路由通过 ConfigServer 管理，职责是维护路由表与通过心跳监控 DataServer 存活。与[[Consistent Hashing|一致性哈希]]（牺牲全局排序换负载均衡）不同，SOS 采用**固定 segment 分区**，实现确定性的 $O(1)$ 表查找：数据切分为 $S$ 个 segment（如 $S=16{,}384$），每个 segment $R$ 副本，共 $S \times R$ 个数据副本分布在 $N$ 个 DataServer 上。
 
 **路由调度约束**（线性规划问题）：
 1. Primary 副本数在各节点均衡（读负载均衡）；
